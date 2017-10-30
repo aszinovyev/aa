@@ -1,0 +1,6 @@
+[package]
+name = "aa"
+version = "0.1.0"
+authors = ["name <email>"]
+
+[dependencies]
