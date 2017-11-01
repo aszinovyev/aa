@@ -58,42 +58,17 @@ pub mod aa {
     // Size of the group minus 1.
     len: u32,
     // Size is len^2. Contains elements in [0..len). len denotes the identity.
-    arr: Box<[u32]>,
+    cayley: Box<[u32]>,
   }
 
   impl Group {
-    pub fn singleton() -> Group {
-      Group {
-        len: 0,
-        arr: Vec::new().into_boxed_slice(),
-      }
-    }
-
-    fn is_id_in_row(g: &Group, y: u32) -> bool {
-      for j in 0..g.len {
-        if g.get(y, j) == g.id() {
-          return true;
-        }
-      }
-      false
-    }
-
-    fn is_id_in_column(g: &Group, x: u32) -> bool {
-      for i in 0..g.len {
-        if g.get(i, x) == g.id() {
-          return true;
-        }
-      }
-      false
-    }
-
-    pub fn new(size: u32, arr: Box<[u32]>) -> Group {
+    pub fn new(size: u32, cayley: Box<[u32]>) -> Group {
       let len = size - 1;
-      assert_eq!((len as usize) * (len as usize), arr.len());
+      assert_eq!((len as usize) * (len as usize), cayley.len());
 
       let res = Group {
         len,
-        arr,
+        cayley,
       };
 
       for i in 0..len {
@@ -119,13 +94,13 @@ pub mod aa {
       if size == 0 {
         Vec::new()
       } else if size == 1 {
-        vec![Self::singleton()]
+        vec![Group{len: 0, cayley: Box::new([])}]
       } else {
         let len = size - 1;
 
         let mut g = Group {
           len,
-          arr: vec![0; (len as usize) * (len as usize)].into_boxed_slice(),
+          cayley: vec![0; (len as usize) * (len as usize)].into_boxed_slice(),
         };
 
         let mut used_in_columns = 
@@ -139,83 +114,13 @@ pub mod aa {
           used_in_rows[[j, j]] = true;
         }
 
+        let mut seen = vec![false; len as usize].into_boxed_slice();
+
         let mut res = Vec::new();
-        Self::with_size_rec(&mut g, 0, 0, &mut used_in_columns, 
-                            &mut used_in_rows, &mut res);
+        Self::with_size_rec(&mut g, 0, 0, &mut used_in_columns,
+                            &mut used_in_rows, &mut seen, &mut res);
 
         return res;
-      }
-    }
-
-    fn satisfies_transitivity(g: &Group) -> bool {
-      for i in 0..g.len {
-        for j in 0..g.len {
-          for k in 0..g.len {
-            if g.op(g.op(i, j), k) != g.op(i, g.op(j, k)) {
-              return false;
-            }
-          }
-        }
-      }
-      true
-    }
-
-    // Returns false iff `g` is isomorphic to some group in `groups`.
-    fn is_unique(g: &Group, groups: &[Group]) -> bool {
-      for gg in groups {
-        if g.is_isomorphic(gg) {
-          return false;
-        }
-      }
-      true
-    }
-
-    fn with_size_rec_try(g: &mut Group, y: u32, x: u32, v: u32, 
-                         used_in_columns: &mut Array2D<bool>,
-                         used_in_rows: &mut Array2D<bool>,
-                         append_to: &mut Vec<Group>) {
-      g.set(y, x, v);
-      used_in_columns[[y as usize, v as usize]] = true;
-      used_in_rows[[x as usize, v as usize]] = true;
-
-      if (y == g.len - 1) && (x == g.len - 1) {
-        if Self::satisfies_transitivity(g) && Self::is_unique(g, append_to) {
-          append_to.push(g.clone());
-        }
-      } else {
-        let mut yn = y;
-        let mut xn = x + 1;
-        if xn == g.len {
-          yn += 1;
-          xn = 0;
-        }
-        Self::with_size_rec(g, yn, xn, used_in_columns, used_in_rows, 
-                            append_to);
-      }
-
-      used_in_columns[[y as usize, v as usize]] = false;
-      used_in_rows[[x as usize, v as usize]] = false;
-    }
-
-    fn with_size_rec(g: &mut Group, y: u32, x: u32, 
-                     used_in_columns: &mut Array2D<bool>,
-                     used_in_rows: &mut Array2D<bool>,
-                     append_to: &mut Vec<Group>) {
-      let id = g.id();
-      if (y <= x) || (g.op(x, y) != id) {
-        for v in 0..g.len {
-          if !used_in_columns[[y as usize, v as usize]] &&
-             !used_in_rows[[x as usize, v as usize]] {
-            Self::with_size_rec_try(g, y, x, v, used_in_columns, 
-                                    used_in_rows, append_to);
-          }
-        }
-      }
-      if ((y <= x) || (g.op(x, y) == id)) &&
-         !used_in_columns[[y as usize, id as usize]] &&
-         !used_in_rows[[x as usize, id as usize]] {
-        Self::with_size_rec_try(g, y, x, id, used_in_columns, 
-                                used_in_rows, append_to);
       }
     }
 
@@ -261,20 +166,124 @@ pub mod aa {
       }
     }
 
+    fn is_id_in_row(g: &Group, y: u32) -> bool {
+      for j in 0..g.len {
+        if g.get(y, j) == g.id() {
+          return true;
+        }
+      }
+      false
+    }
+
+    fn is_id_in_column(g: &Group, x: u32) -> bool {
+      for i in 0..g.len {
+        if g.get(i, x) == g.id() {
+          return true;
+        }
+      }
+      false
+    }
+
+    fn satisfies_transitivity(g: &Group) -> bool {
+      for i in 0..g.len {
+        for j in 0..g.len {
+          for k in 0..g.len {
+            if g.op(g.op(i, j), k) != g.op(i, g.op(j, k)) {
+              return false;
+            }
+          }
+        }
+      }
+      true
+    }
+
+    // Returns false iff `g` is isomorphic to some group in `groups`.
+    fn is_unique(g: &Group, groups: &[Group]) -> bool {
+      for gg in groups {
+        if g.is_isomorphic(gg) {
+          return false;
+        }
+      }
+      true
+    }
+
+    fn with_size_rec_try(g: &mut Group, y: u32, x: u32, v: u32, 
+                         used_in_columns: &mut Array2D<bool>,
+                         used_in_rows: &mut Array2D<bool>,
+                         seen: &mut Box<[bool]>,
+                         append_to: &mut Vec<Group>) {
+      g.set(y, x, v);
+      used_in_columns[[y as usize, v as usize]] = true;
+      used_in_rows[[x as usize, v as usize]] = true;
+      let mut was_seen = false;
+      if v != g.len {
+        was_seen = seen[v as usize];
+        seen[v as usize] = true;
+      }
+
+      if (y == g.len - 1) && (x == g.len - 1) {
+        if Self::satisfies_transitivity(g) && Self::is_unique(g, append_to) {
+          append_to.push(g.clone());
+        }
+      } else {
+        let mut yn = y;
+        let mut xn = x + 1;
+        if xn == g.len {
+          yn += 1;
+          xn = 0;
+        }
+        Self::with_size_rec(g, yn, xn, used_in_columns, used_in_rows, seen,
+                            append_to);
+      }
+
+      used_in_columns[[y as usize, v as usize]] = false;
+      used_in_rows[[x as usize, v as usize]] = false;
+      if v != g.len {
+        seen[v as usize] = was_seen;
+      }
+    }
+
+    fn with_size_rec(g: &mut Group, y: u32, x: u32, 
+                     used_in_columns: &mut Array2D<bool>,
+                     used_in_rows: &mut Array2D<bool>,
+                     seen: &mut Box<[bool]>,
+                     append_to: &mut Vec<Group>) {
+      let id = g.id();
+      if (y <= x) || (g.op(x, y) != id) {
+        let mut tried_unseen = false;
+        for v in 0..g.len {
+          if !used_in_columns[[y as usize, v as usize]] &&
+             !used_in_rows[[x as usize, v as usize]] &&
+             (!tried_unseen || seen[v as usize]) {
+            if !seen[v as usize] {
+              tried_unseen = true;
+            }
+            Self::with_size_rec_try(g, y, x, v, used_in_columns, used_in_rows,
+                                    seen, append_to);
+          }
+        }
+      }
+      if ((y <= x) || (g.op(x, y) == id)) &&
+         !used_in_columns[[y as usize, id as usize]] &&
+         !used_in_rows[[x as usize, id as usize]] {
+        Self::with_size_rec_try(g, y, x, id, used_in_columns, used_in_rows, 
+                                seen, append_to);
+      }
+    }
+
     fn index(&self, y: u32, x: u32) -> usize {
       (y * self.len + x) as usize
     }
 
     fn get(&self, y: u32, x: u32) -> u32 {
-      self.arr[self.index(y, x)]
+      self.cayley[self.index(y, x)]
     }
 
     fn set(&mut self, y: u32, x: u32, v: u32) {
-      self.arr[self.index(y, x)] = v
+      self.cayley[self.index(y, x)] = v
     }
 
-    fn can_be_isomorphism(&self, other: &Group, perm: &Permutation) 
-        -> bool {
+    fn can_be_isomorphism(&self, other: &Group, perm: &Permutation) -> bool {
       for i in 0..perm.get().len() {
         for j in 0..perm.get().len() {
           let ij = self.op(i as u32, j as u32);  // product of i and j
@@ -286,6 +295,35 @@ pub mod aa {
         }
       }
       true
+    }
+
+    pub fn cross_product(&self, rhs: &Group) -> Group {
+      let len = (self.len + 1) * (rhs.len + 1) - 1;
+      let mut res = Group {
+        len,
+        cayley: vec![0; (len as usize) * (len as usize)].into_boxed_slice(),
+      };
+
+      let mut k0: u32 = 0;
+      for g0 in 0..(self.len + 1) {
+        for h0 in 0..(rhs.len + 1) {
+          if k0 < len {
+            let mut k1: u32 = 0;
+            for g1 in 0..(self.len + 1) {
+              for h1 in 0..(rhs.len + 1) {
+                if k1 < len {
+                  res.set(
+                      k0, k1, self.op(g0, g1) * (rhs.len + 1) + rhs.op(h0, h1));
+                  k1 += 1;
+                }  // if k1
+              }  // for h1
+            }  // for g1
+            k0 += 1;
+          }  // if k0
+        }  // for h0
+      }  // for g0
+
+      res
     }
   }
 }
@@ -394,11 +432,49 @@ mod permutation_tests {
 mod group_tests {
   use super::aa::Group;
 
-  #[test]
-  fn singleton() {
-    let g = Group::singleton();
-    assert_eq!(1, g.size());
-    assert_eq!(g.id(), g.op(g.id(), g.id()));
+  fn z(n: u32) -> Group {
+    let len = n - 1;
+    let mut cayley = vec![0; (len * len) as usize].into_boxed_slice();
+    let mut k = 0;
+    for i in 0..len {
+      for j in 0..len {
+        cayley[k] = (i + 1 + j) % n;
+        k += 1;
+      }
+    }
+    Group::new(n, cayley)
+  }
+
+  // p and q are elements of D(n). If p < n, it denotes R^p, where R is rotation
+  // to the left by 1. If n <= p < n, p denotes FR^p, where F is reflection.
+  fn d_op(n: u32, p: u32, q: u32) -> u32 {
+    if p < n {
+      if q < n {
+        (p + q) % n
+      } else {
+        n + (q - p) % n
+      }
+    } else {
+      if q < n {
+        n + (p + q) % n
+      } else {
+        (n + q - p) % n
+      }
+    }
+  }
+
+  fn d(n: u32) -> Group {
+    let len = 2*n - 1;
+    let mut cayley = 
+        vec![0; (len * len) as usize].into_boxed_slice();
+    let mut k = 0;
+    for i in 0..len {
+      for j in 0..len {
+        cayley[k] = (2*n + d_op(n, i + 1, j + 1) - 1) % (2*n);
+        k += 1;
+      }
+    }
+    Group::new(2*n, cayley)
   }
 
   #[test]
@@ -411,34 +487,21 @@ mod group_tests {
   fn with_size_1() {
     let groups = Group::with_size(1);
     assert_eq!(1, groups.len());
-    assert_eq!(&Group::singleton(), &groups[0]);
+    assert_eq!(z(1), groups[0]);
   }
 
   #[test]
   fn with_size_2() {
     let groups = Group::with_size(2);
     assert_eq!(1, groups.len());
-    let g = &groups[0];
-
-    assert_eq!(2, g.size());
-    assert_eq!(g.id(), g.op(g.id(), g.id()));
-    assert_eq!(0, g.op(0, g.id()));
-    assert_eq!(0, g.op(g.id(), 0));
-    assert_eq!(g.id(), g.op(0, 0));
+    assert_eq!(z(2), groups[0]);
   }
 
   #[test]
   fn with_size_3() {
     let groups = Group::with_size(3);
     assert_eq!(1, groups.len());
-    let g = &groups[0];
-
-    let z_3 = [2, 0,
-               0, 1];
-    let z_3 = Group::new(3, z_3.iter()
-        .map(|&x| match x {0 => 2, 1...2 => (x - 1), _ => panic!()})
-        .collect::<Vec<u32>>().into_boxed_slice());
-    assert!(g.is_isomorphic(&z_3));
+    assert_eq!(z(3), groups[0]);
   }
 
   #[test]
@@ -446,12 +509,6 @@ mod group_tests {
     let groups = Group::with_size(4);
     assert_eq!(2, groups.len());
 
-    let z_4 = [2, 3, 0,
-               3, 0, 1,
-               0, 1, 2];
-    let z_4 = Group::new(4, z_4.iter()
-        .map(|&x| match x {0 => 3, 1...3 => (x - 1), _ => panic!()})
-        .collect::<Vec<u32>>().into_boxed_slice());
     let u_8 = [1, 7, 5,
                7, 1, 3,
                5, 3, 1];
@@ -459,8 +516,8 @@ mod group_tests {
         .map(|&x| match x {1 => 3, 3 => 0, 5 => 1, 7 => 2, _ => panic!()})
         .collect::<Vec<u32>>().into_boxed_slice());
 
-    assert!((groups[0].is_isomorphic(&z_4) && groups[1].is_isomorphic(&u_8)) ||
-            (groups[1].is_isomorphic(&z_4) && groups[0].is_isomorphic(&u_8)));
+    assert!((groups[0].is_isomorphic(&z(4)) && groups[1].is_isomorphic(&u_8)) ||
+            (groups[1].is_isomorphic(&z(4)) && groups[0].is_isomorphic(&u_8)));
   }
 
   // Did not verify by hand, but it should help find regressions.
@@ -468,17 +525,7 @@ mod group_tests {
   fn with_size_5() {
     let groups = Group::with_size(5);
     assert_eq!(1, groups.len());
-    let g = &groups[0];
-
-    let z_5 = [2, 3, 4, 0,
-               3, 4, 0, 1,
-               4, 0, 1, 2,
-               0, 1, 2, 3];
-    let z_5 = Group::new(5, z_5.iter()
-        .map(|&x| match x {0 => 4, 1...4 => (x - 1), _ => panic!()})
-        .collect::<Vec<u32>>().into_boxed_slice());
-
-    assert!(g.is_isomorphic(&z_5));
+    assert_eq!(z(5), groups[0]);
   }
 
   // Did not verify by hand, but it should help find regressions.
@@ -486,31 +533,14 @@ mod group_tests {
   fn with_size_6() {
     let groups = Group::with_size(6);
     assert_eq!(2, groups.len());
-
-    let z_6 = [2, 3, 4, 5, 0, 
-               3, 4, 5, 0, 1, 
-               4, 5, 0, 1, 2,
-               5, 0, 1, 2, 3,
-               0, 1, 2, 3, 4];
-    let z_6 = Group::new(6, z_6.iter()
-        .map(|&x| match x {0 => 5, 1...5 => (x - 1), _ => panic!()})
-        .collect::<Vec<u32>>().into_boxed_slice());
-    let s_3 = Group::new(6, Box::new([1, 5, 4, 2, 3,
-                                      5, 0, 3, 4, 2,
-                                      3, 4, 5, 0, 1,
-                                      4, 2, 1, 5, 0,
-                                      2, 3, 0, 1, 5]));
-
-    assert!((groups[0].is_isomorphic(&z_6) && groups[1].is_isomorphic(&s_3)) ||
-            (groups[1].is_isomorphic(&z_6) && groups[0].is_isomorphic(&s_3)));
+    assert!((groups[0].is_isomorphic(&z(6)) && groups[1].is_isomorphic(&d(3))) ||
+            (groups[1].is_isomorphic(&z(6)) && groups[0].is_isomorphic(&d(3))));
   }
 
   #[test]
   fn is_isomorphic_diff_size() {
-    let g0 = Group::singleton();
-    let g1 = Group::new(2, Box::new([1]));
-    assert!(!g0.is_isomorphic(&g1));
-    assert!(!g1.is_isomorphic(&g0));
+    assert!(!z(2).is_isomorphic(&z(3)));
+    assert!(!z(3).is_isomorphic(&z(2)));
   }
 
   #[test]
@@ -528,5 +558,31 @@ mod group_tests {
     let u_8 = Group::new(4, Box::new([3, 2, 1, 2, 3, 0, 1, 0, 3]));  // U(8)
     assert!(!z_4.is_isomorphic(&u_8));
     assert!(!u_8.is_isomorphic(&z_4));
+  }
+
+  #[test]
+  fn cross_product_z_1_d_3() {
+    assert!(d(3).is_isomorphic(&d(3).cross_product(&z(1))));
+    assert!(d(3).is_isomorphic(&z(1).cross_product(&d(3))));
+  }
+
+  #[test]
+  fn cross_product_z_2_d_3() {
+    assert!(d(6).is_isomorphic(&z(2).cross_product(&d(3))));
+    assert!(d(6).is_isomorphic(&d(3).cross_product(&z(2))));
+  }
+
+  #[test]
+  fn cross_product_z_2_z_3() {
+    let g = z(2).cross_product(&z(3));
+    let h = z(3).cross_product(&z(2));
+    assert!(g.is_isomorphic(&h));
+  }
+
+  #[test]
+  fn cross_product_z_2_z_5() {
+    let g = z(2).cross_product(&z(5));
+    let h = z(5).cross_product(&z(2));
+    assert!(g.is_isomorphic(&h));
   }
 }
